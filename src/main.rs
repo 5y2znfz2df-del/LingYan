@@ -148,10 +148,10 @@ fn main() {
             windows_sys::Win32::UI::WindowsAndMessaging::SM_CYSCREEN,
         )
     };
-    let orb_x = screen_w - ORB_SIZE - 24;
-    let orb_y = screen_h - ORB_SIZE - 96;
-    let panel_x = (screen_w - PANEL_W - 16).max(0);
-    let panel_y = (orb_y - PANEL_H - 10).max(0);
+    let orb_x = 24;
+    let orb_y = 24;
+    let panel_x = 24;
+    let panel_y = orb_y + ORB_SIZE + 10;
 
     let title = wide("灵言");
     let panel = unsafe {

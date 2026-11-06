@@ -12,14 +12,14 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
-    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
-    AlphaBlend, BeginPaint, CreateCompatibleDC, CreateDIBSection, CreateFontW, CreateRoundRectRgn,
-    CreateSolidBrush, DIB_RGB_COLORS, EndPaint, GetDC, InvalidateRect, PatBlt, ReleaseDC,
-    SelectObject, SetWindowRgn, BLACKNESS,
-    SetBkMode, SetTextColor, UpdateWindow, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-    DEFAULT_CHARSET, DEFAULT_PITCH, FW_NORMAL, OUT_DEFAULT_PRECIS, PAINTSTRUCT, TRANSPARENT,
+    AC_SRC_ALPHA, AC_SRC_OVER, AlphaBlend, BeginPaint, BI_RGB, BITMAPINFO, BITMAPINFOHEADER,
+    BLENDFUNCTION, CreateCompatibleDC, CreateDIBSection, CreateFontW, CreateSolidBrush,
+    DIB_RGB_COLORS, DeleteObject, EndPaint, FillRect, GetDC, InvalidateRect, ReleaseDC,
+    SelectObject, SetBkMode, SetTextColor, SetWindowRgn, UpdateWindow, CLIP_DEFAULT_PRECIS,
+    CLEARTYPE_QUALITY, DEFAULT_CHARSET, DEFAULT_PITCH, FW_NORMAL, OUT_DEFAULT_PRECIS,
+    PAINTSTRUCT, TRANSPARENT,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -27,8 +27,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, GetMessageW, GetWindowLongPtrW, LoadCursorW, MessageBoxW, PostQuitMessage,
     RegisterClassW, SendMessageW, SetProcessDPIAware, SetForegroundWindow, SetLayeredWindowAttributes, SetTimer,
     SetWindowTextW, ShowWindow, SystemParametersInfoW, TrackPopupMenu, TranslateMessage,
-    SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, IDC_ARROW,
-    LWA_ALPHA, MB_ICONINFORMATION, MF_STRING, MSG, SPI_GETWORKAREA, SW_HIDE, SW_SHOWNOACTIVATE,
+    SetWindowPos, UpdateLayeredWindow, ULW_ALPHA, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, IDC_ARROW,
+    LWA_ALPHA, LWA_COLORKEY, MB_ICONINFORMATION, MF_STRING, MSG, SPI_GETWORKAREA, SW_HIDE, SW_SHOWNOACTIVATE,
     TPM_NONOTIFY, TPM_RETURNCMD, WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONUP, WM_PAINT,
     WM_RBUTTONUP, WM_TIMER, WNDCLASSW, WS_CHILD, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     WS_EX_TOPMOST, WS_POPUP, WS_VISIBLE,
@@ -97,6 +97,7 @@ fn main() {
     let instance = unsafe { GetModuleHandleW(std::ptr::null()) };
 
     let brush = unsafe { CreateSolidBrush(rgb(18, 18, 26)) } as usize;
+    let key_brush = unsafe { CreateSolidBrush(rgb(255, 0, 255)) };
 
     let orb_class = wide("LingYanOrb");
     let panel_class = wide("LingYanPanel");
@@ -109,7 +110,7 @@ fn main() {
             hInstance: instance,
             hIcon: std::ptr::null_mut(),
             hCursor: LoadCursorW(std::ptr::null_mut(), IDC_ARROW),
-            hbrBackground: brush as *mut c_void,
+            hbrBackground: key_brush as *mut c_void,
             lpszMenuName: std::ptr::null(),
             lpszClassName: orb_class.as_ptr(),
         };
@@ -214,7 +215,7 @@ fn main() {
 
     let orb = unsafe {
         CreateWindowExW(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
             orb_class.as_ptr(),
             title.as_ptr(),
             WS_POPUP,
@@ -260,11 +261,6 @@ fn main() {
     unsafe {
         SelectObject(mem_dc, dib);
         ShowWindow(orb, SW_SHOWNOACTIVATE);
-        SetWindowRgn(
-            orb,
-            CreateRoundRectRgn(0, 0, ORB_SIZE + 1, ORB_SIZE + 1, ORB_SIZE, ORB_SIZE),
-            1,
-        );
         SetWindowPos(
             orb,
             HWND_TOPMOST,
@@ -534,7 +530,34 @@ fn tick() {
             state.bits as *mut u8,
             state.pixels.len() * 4,
         );
-        InvalidateRect(state.orb as HWND, std::ptr::null(), 0);
+        let screen = GetDC(std::ptr::null_mut());
+        let dst = POINT {
+            x: state.orb_x,
+            y: state.orb_y,
+        };
+        let size = SIZE {
+            cx: ORB_SIZE,
+            cy: ORB_SIZE,
+        };
+        let src = POINT { x: 0, y: 0 };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        UpdateLayeredWindow(
+            state.orb as HWND,
+            screen,
+            &dst,
+            &size,
+            state.mem_dc as *mut c_void,
+            &src,
+            0,
+            &blend,
+            ULW_ALPHA,
+        );
+        ReleaseDC(std::ptr::null_mut(), screen);
     }
 }
 
@@ -554,7 +577,15 @@ fn paint_orb(hwnd: HWND) {
     let mut paint: PAINTSTRUCT = unsafe { std::mem::zeroed() };
     unsafe {
         let hdc = BeginPaint(hwnd, &mut paint);
-        PatBlt(hdc, 0, 0, ORB_SIZE, ORB_SIZE, BLACKNESS);
+        let key = CreateSolidBrush(rgb(255, 0, 255));
+        let rect = RECT {
+            left: 0,
+            top: 0,
+            right: ORB_SIZE,
+            bottom: ORB_SIZE,
+        };
+        FillRect(hdc, &rect, key);
+        DeleteObject(key);
         let state = app().lock().unwrap();
         let blend = BLENDFUNCTION {
             BlendOp: AC_SRC_OVER as u8,

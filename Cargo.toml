@@ -1,6 +1,6 @@
 [package]
 name = "lingyan"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "LingYan - a Siri-style voice widget for the Windows taskbar / screen corner"
 license = "GPL-3.0-only"

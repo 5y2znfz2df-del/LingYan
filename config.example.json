@@ -1,0 +1,9 @@
+{
+  "api_key": "",
+  "base_url": "https://open.bigmodel.cn/api/paas/v4",
+  "model": "glm-4.5-flash",
+  "proxy": "",
+  "system_prompt": "你是运行在 Windows 桌面角落的小助手「灵言」。用户用语音和你说话，回答要简洁、口语化、中文，80 字以内，不要 Markdown。",
+  "tts_rate": 1,
+  "position": "corner"
+}
